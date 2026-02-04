@@ -1,24 +1,97 @@
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Rastreador 3D AN-32B</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-const firebaseConfig = {
-  // 🔴 MISMO firebaseConfig
-};
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet"/>
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+  <style>
+    html, body, #cesiumContainer { width:100%; height:100%; margin:0; padding:0; overflow:hidden; }
+    #overlay {
+      position:absolute; top:10px; left:10px; z-index:9999;
+      background:rgba(0,0,0,.75); color:#fff; padding:10px; border-radius:8px;
+      font: 14px/1.35 Arial, sans-serif; max-width: 92vw;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
 
-const plane = viewer.entities.add({
-  position: Cesium.Cartesian3.fromDegrees(0,0,1000),
-  point: { pixelSize: 12, color: Cesium.Color.RED }
-});
+<body>
+  <div id="overlay">Cargando…</div>
+  <div id="cesiumContainer"></div>
 
-viewer.trackedEntity = plane;
+  <script>
+    // Mostrar errores JS en pantalla (clave para GitHub Pages)
+    const overlay = document.getElementById("overlay");
+    window.addEventListener("error", (e) => {
+      overlay.textContent = "❌ ERROR JS:\n" + (e.message || e.error || e);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      overlay.textContent = "❌ PROMISE ERROR:\n" + (e.reason?.message || e.reason || e);
+    });
 
-onValue(ref(db, "an32/position"), snap => {
-  const d = snap.val();
-  if (!d) return;
-  plane.position = Cesium.Cartesian3.fromDegrees(d.lon, d.lat, d.alt);
-});
-</script>
+    // Verificar que Cesium cargó
+    if (!window.Cesium) {
+      overlay.textContent = "❌ Cesium NO cargó. Revisa conexión o el link de Cesium.";
+    }
+  </script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const overlay = document.getElementById("overlay");
+
+    // ✅ TU TOKEN CESIUM
+    Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMWEwZTAwZS0wYWVjLTQ1ZmUtOGY2OC05NmVjZmQ5OTNhZTEiLCJpZCI6Mzg2Nzc5LCJpYXQiOjE3NzAxNzUzMDB9.Myivn9P57mAFArlOhP_dXj-CmANbGiUnwmTXssotP_o";
+
+    // 🔥 Firebase (los datos reales que ya usas)
+    const firebaseConfig = {
+      apiKey: "AIzaSyCDHpTxxw0XObZFaG4G7VRVl8-ouszM5e8",
+      authDomain: "tracker-an32b.firebaseapp.com",
+      databaseURL: "https://tracker-an32b-default-rtdb.firebaseio.com",
+      projectId: "tracker-an32b",
+      storageBucket: "tracker-an32b.firebasestorage.app",
+      messagingSenderId: "671744221089",
+      appId: "1:671744221089:web:60af7fbf5e992210ec75e0"
+    };
+
+    overlay.textContent = "✅ Cesium cargó. Inicializando visor…";
+
+    const viewer = new Cesium.Viewer("cesiumContainer", {
+      terrain: Cesium.Terrain.fromWorldTerrain(),
+      timeline: false,
+      animation: false
+    });
+
+    const plane = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(-77.04, -12.05, 1000),
+      point: { pixelSize: 12, color: Cesium.Color.RED }
+    });
+
+    viewer.trackedEntity = plane;
+
+    overlay.textContent = "✅ Visor listo. Conectando a Firebase…";
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    onValue(ref(db, "an32/position"), (snap) => {
+      const d = snap.val();
+      if (!d) {
+        overlay.textContent = "⚠️ Firebase conectado, pero no hay datos en an32/position";
+        return;
+      }
+      plane.position = Cesium.Cartesian3.fromDegrees(d.lon, d.lat, d.alt || 0);
+      overlay.textContent =
+        "✅ Recibiendo datos:\n" +
+        "lat: " + d.lat + "\n" +
+        "lon: " + d.lon + "\n" +
+        "alt: " + (d.alt ?? 0);
+    });
+  </script>
+</body>
+</html>
