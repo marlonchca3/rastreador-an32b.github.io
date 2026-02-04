@@ -1,71 +1,109 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <title>Tracker 3D AN-32B</title>
+  <meta charset="utf-8" />
+  <title>Rastreador 3D AN-32B</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
-  <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet"/>
 
   <style>
     html, body, #cesiumContainer {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
+      width:100%;
+      height:100%;
+      margin:0;
+      padding:0;
+      overflow:hidden;
     }
+
     #hud {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 999;
-      background: rgba(0,0,0,0.6);
-      color: #fff;
-      padding: 10px;
-      font-family: Arial, sans-serif;
-      font-size: 14px;
-      border-radius: 8px;
-      line-height: 1.4;
-      min-width: 220px;
+      position:absolute;
+      top:10px;
+      left:10px;
+      z-index:9999;
+      background:rgba(0,0,0,.65);
+      color:#fff;
+      padding:10px 12px;
+      border-radius:10px;
+      font: 14px/1.35 Arial, sans-serif;
+      min-width: 260px;
+      max-width: 92vw;
+      white-space: pre-wrap;
+    }
+
+    #alertBanner {
+      position:absolute;
+      top:0;
+      left:0;
+      right:0;
+      padding:10px;
+      text-align:center;
+      font-family:Arial,sans-serif;
+      font-weight:bold;
+      background:rgba(255,0,0,0.85);
+      color:white;
+      z-index:10000;
+      display:none;
+    }
+
+    #dot {
+      display:inline-block;
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      margin-right:8px;
+      background:#ff4444;
+      vertical-align:middle;
+    }
+
+    #small {
+      font-size: 12px;
+      opacity: .95;
     }
   </style>
 </head>
 
 <body>
+  <div id="alertBanner">⚠️ TORMENTA CERCA (≤ 500 m)</div>
+
   <div id="hud">
+    <span id="dot"></span><span id="linkStatus">Cargando…</span><br>
     Velocidad: -- km/h ( -- kt )<br>
     Altura: -- m ( -- ft )<br>
+    Radar: <span id="small">⏳ Radar iniciando…</span><br>
     Última actualización: --
   </div>
 
   <div id="cesiumContainer"></div>
 
+  <script>
+    // Mostrar errores JS en pantalla
+    const hud = document.getElementById("hud");
+    window.addEventListener("error", (e) => {
+      hud.textContent = "❌ ERROR JS:\n" + (e.message || e.error || e);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      hud.textContent = "❌ PROMISE ERROR:\n" + (e.reason?.message || e.reason || e);
+    });
+  </script>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-    // 🔑 TOKEN CESIUM (TU TOKEN LARGO)
-    Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMWEwZTAwZS0wYWVjLTQ1ZmUtOGY2OC05NmVjZmQ5OTNhZTEiLCJpZCI6Mzg2Nzc5LCJpYXQiOjE3NzAxNzUzMDB9.Myivn9P57mAFArlOhP_dXj-CmANbGiUnwmTXssotP_o";
+    // ======= CONFIG =======
+    const RADAR_RADIUS_M = 500;
+    const RADAR_POLL_MS = 15000;     // cada 15s
+    const LOST_AFTER_MS = 10000;     // si no hay datos en 10s -> rojo
 
-    // 🌍 VISOR 3D
-    const viewer = new Cesium.Viewer("cesiumContainer", {
-      terrain: Cesium.Terrain.fromWorldTerrain(),
-      timeline: false,
-      animation: false
-    });
+    // ✅ TU TOKEN CESIUM
+    Cesium.Ion.defaultAccessToken =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMWEwZTAwZS0wYWVjLTQ1ZmUtOGY2OC05NmVjZmQ5OTNhZTEiLCJpZCI6Mzg2Nzc5LCJpYXQiOjE3NzAxNzUzMDB9.Myivn9P57mAFArlOhP_dXj-CmANbGiUnwmTXssotP_o";
 
-    // ✈️ PUNTO (AVIÓN)
-    const plane = viewer.entities.add({
-      position: Cesium.Cartesian3.fromDegrees(-77.04, -12.05, 1000),
-      point: { pixelSize: 36, color: Cesium.Color.RED }
-    });
-
-    viewer.trackedEntity = plane;
-
-    // 🔥 FIREBASE CONFIG (PON LOS DATOS REALES DE TU PROYECTO)
+    // 🔥 Firebase (tu proyecto tracker-an32b)
     const firebaseConfig = {
-      apiKey: "PEGA_TU_API_KEY_REAL",
+      apiKey: "AIzaSyCDHpTxxw0XObZFaG4G7VRVl8-ouszM5e8",
       authDomain: "tracker-an32b.firebaseapp.com",
       databaseURL: "https://tracker-an32b-default-rtdb.firebaseio.com",
       projectId: "tracker-an32b",
@@ -74,13 +112,54 @@
       appId: "1:671744221089:web:60af7fbf5e992210ec75e0"
     };
 
+    // ======= UI refs =======
+    const dot = document.getElementById("dot");
+    const linkStatus = document.getElementById("linkStatus");
+    const banner = document.getElementById("alertBanner");
+
+    function setLink(ok, text) {
+      dot.style.background = ok ? "#33cc66" : "#ff4444";
+      linkStatus.textContent = text || (ok ? "Recibiendo datos" : "Sin datos");
+    }
+
+    // ======= Viewer =======
+    setLink(false, "Inicializando Cesium…");
+
+    const viewer = new Cesium.Viewer("cesiumContainer", {
+      terrain: Cesium.Terrain.fromWorldTerrain(),
+      timeline: false,
+      animation: false
+    });
+
+    // Punto (avión)
+    const plane = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(-77.04, -12.05, 1000),
+      point: { pixelSize: 16, color: Cesium.Color.RED }
+    });
+
+    viewer.trackedEntity = plane;
+
+    // Anillo radar 500m
+    const radarRing = viewer.entities.add({
+      position: plane.position,
+      ellipse: {
+        semiMajorAxis: RADAR_RADIUS_M,
+        semiMinorAxis: RADAR_RADIUS_M,
+        height: 0,
+        material: Cesium.Color.LIME.withAlpha(0.18),
+        outline: true,
+        outlineColor: Cesium.Color.LIME
+      }
+    });
+
+    // ======= Firebase =======
+    setLink(false, "Conectando a Firebase…");
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const hud = document.getElementById("hud");
-
-    // --- Utilidades velocidad / altura ---
+    // ======= Utilidades velocidad / altura =======
     let lastFix = null;
+    let lastUpdateMs = 0;
 
     function haversineMeters(lat1, lon1, lat2, lon2) {
       const R = 6371000;
@@ -98,42 +177,173 @@
     const mpsToKt  = mps => mps * 1.943844;
     const mToFt    = m => m * 3.28084;
 
-    // 📡 ESCUCHAR POSICIÓN EN TIEMPO REAL
-    onValue(ref(db, "an32/position"), snap => {
+    // ======= RADAR METEO GRIDDED =======
+    let lastRadarAt = 0;
+    let lastRadar = { danger: false, msg: "⏳ Radar iniciando…", thunderHits: 0, maxRain: 0 };
+
+    function offsetLatLon(lat, lon, northM, eastM) {
+      const dLat = northM / 111320;
+      const dLon = eastM / (111320 * Math.cos(lat * Math.PI / 180));
+      return { lat: lat + dLat, lon: lon + dLon };
+    }
+
+    function grid3x3(lat, lon, r = 500) {
+      const k = r / Math.sqrt(2);
+      const offsets = [
+        [ 0, 0],
+        [ r, 0], [-r, 0], [0, r], [0, -r],
+        [ k, k], [ k,-k], [-k, k], [-k,-k]
+      ];
+      return offsets.map(([n,e]) => offsetLatLon(lat, lon, n, e));
+    }
+
+    function isThunderCode(code) {
+      return code === 95 || code === 96 || code === 97 || code === 98 || code === 99;
+    }
+
+    let audioCtx;
+    function beep() {
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = "sine";
+        o.frequency.value = 880;
+        g.gain.value = 0.05;
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start();
+        setTimeout(() => o.stop(), 180);
+      } catch {}
+    }
+
+    // ✅ Radar fijo: no muestra “Sin current”, conserva el último radar válido
+    async function radarMeteoGridded(lat, lon) {
+      const now = Date.now();
+      if (now - lastRadarAt < RADAR_POLL_MS) return lastRadar;
+      lastRadarAt = now;
+
+      const pts = grid3x3(lat, lon, RADAR_RADIUS_M);
+      const lats = pts.map(p => p.lat.toFixed(6)).join(",");
+      const lons = pts.map(p => p.lon.toFixed(6)).join(",");
+
+      const url =
+        `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+        `&current=weather_code,precipitation,rain,wind_speed_10m&timezone=auto`;
+
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) return lastRadar;
+
+        const j = await res.json();
+        const c = j.current;
+
+        // ✅ FIX PRINCIPAL
+        if (!c) return lastRadar;
+
+        const codes = Array.isArray(c.weather_code) ? c.weather_code : [c.weather_code];
+        const rainA  = Array.isArray(c.rain) ? c.rain : [c.rain ?? 0];
+        const precA  = Array.isArray(c.precipitation) ? c.precipitation : [c.precipitation ?? 0];
+
+        let thunderHits = 0;
+        let maxRain = 0;
+        let danger = false;
+
+        for (let i = 0; i < codes.length; i++) {
+          const code = Number(codes[i]);
+          const rain = Math.max(Number(rainA[i] ?? 0), Number(precA[i] ?? 0));
+          maxRain = Math.max(maxRain, rain);
+
+          if (isThunderCode(code)) thunderHits++;
+          if (rain >= 3.0) danger = true;
+        }
+
+        if (thunderHits > 0) danger = true;
+
+        const msg = danger
+          ? `⚠️ TORMENTA/LLUVIA FUERTE ≤ 500 m | th:${thunderHits} | lluvia máx:${maxRain.toFixed(1)}`
+          : `✅ Radar 500 m OK | lluvia máx:${maxRain.toFixed(1)}`;
+
+        if (danger && !lastRadar.danger) beep();
+
+        lastRadar = { danger, msg, thunderHits, maxRain };
+        return lastRadar;
+
+      } catch {
+        // ✅ SIN ERROR: conserva el último radar bueno
+        return lastRadar;
+      }
+    }
+
+    // Marca sin datos si pasan X segundos sin update
+    setInterval(() => {
+      const now = Date.now();
+      if (!lastUpdateMs || (now - lastUpdateMs) > LOST_AFTER_MS) {
+        setLink(false, "Sin datos (celular pausado)");
+      }
+    }, 1000);
+
+    // ======= LISTENER PRINCIPAL =======
+    setLink(false, "Esperando datos…");
+
+    onValue(ref(db, "an32/position"), async (snap) => {
       const d = snap.val();
-      if (!d) return;
+      if (!d || typeof d.lat !== "number" || typeof d.lon !== "number") return;
 
       const lat = d.lat;
       const lon = d.lon;
-      const altM = (d.alt ?? 0);
+      const altM = (typeof d.alt === "number" ? d.alt : 0);
       const altFt = mToFt(altM);
+      const tMs = (typeof d.time === "number" ? d.time : Date.now());
+      const tStr = new Date(tMs).toLocaleString();
 
-      // mover punto
-      plane.position = Cesium.Cartesian3.fromDegrees(lon, lat, altM || 1000);
-        // y asegurar una altura mínima de 10 m
-        const displayAlt = Math.max((altM ?? 0) + 5);
-        plane.position = Cesium.Cartesian3.fromDegrees(lon, lat, displayAlt);
+      // Posición con altura mínima para visualizar
+      const displayAlt = Math.max((altM ?? 0) + 5, 10);
+      plane.position = Cesium.Cartesian3.fromDegrees(lon, lat, displayAlt);
 
-      // calcular velocidad (si hay timestamp)
+      // Mover anillo radar
+      radarRing.position = plane.position;
+
+      // Velocidad
       let speedKmh = null, speedKt = null;
-
-      if (lastFix && d.time && lastFix.time && d.time > lastFix.time) {
+      if (lastFix && tMs > lastFix.time) {
         const distM = haversineMeters(lastFix.lat, lastFix.lon, lat, lon);
-        const dt = (d.time - lastFix.time) / 1000;
-        const mps = distM / dt;
+        const dtSec = (tMs - lastFix.time) / 1000;
+        const mps = distM / dtSec;
 
-        speedKmh = mpsToKmh(mps);
-        speedKt  = mpsToKt(mps);
+        // filtro anti-saltos GPS
+        if (isFinite(mps) && mps >= 0 && mps < 200) {
+          speedKmh = mpsToKmh(mps);
+          speedKt = mpsToKt(mps);
+        }
       }
 
-      const t = d.time ? new Date(d.time).toLocaleString() : "--";
+      // Radar meteo gridded
+      const radar = await radarMeteoGridded(lat, lon);
 
+      // Color del anillo + banner
+      if (radar.danger) {
+        radarRing.ellipse.material = Cesium.Color.RED.withAlpha(0.22);
+        radarRing.ellipse.outlineColor = Cesium.Color.RED;
+        banner.style.display = "block";
+      } else {
+        radarRing.ellipse.material = Cesium.Color.LIME.withAlpha(0.18);
+        radarRing.ellipse.outlineColor = Cesium.Color.LIME;
+        banner.style.display = "none";
+      }
+
+      // UI estado
+      lastFix = { lat, lon, time: tMs };
+      lastUpdateMs = Date.now();
+      setLink(true, "Recibiendo datos");
+
+      // HUD
       hud.innerHTML =
+        `<span id="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;background:#33cc66;vertical-align:middle;"></span>` +
+        `<span id="linkStatus">Recibiendo datos</span><br>` +
         `Velocidad: ${speedKmh ? speedKmh.toFixed(1) : "--"} km/h (${speedKt ? speedKt.toFixed(1) : "--"} kt)<br>` +
         `Altura: ${altM ? altM.toFixed(0) : "--"} m (${altM ? altFt.toFixed(0) : "--"} ft)<br>` +
-        `Última actualización: ${t}`;
-
-      lastFix = { lat, lon, time: d.time };
+        `Radar: <span id="small">${radar.msg}</span><br>` +
+        `Última actualización: ${tStr}`;
     });
   </script>
 </body>
