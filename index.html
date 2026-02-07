@@ -2,549 +2,251 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Rastreador 3D AN-32B</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rastreador Táctico AN-32B | Responsive</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet"/>
 
   <style>
-    html, body, #cesiumContainer { width:100%; height:100%; margin:0; padding:0; overflow:hidden; }
+    html, body, #cesiumContainer { width:100%; height:100%; margin:0; padding:0; overflow:hidden; background: #000; }
 
+    /* --- HUD RESPONSIVE --- */
     #hud {
-      position:absolute; top:10px; left:10px; z-index:9999;
-      background:rgba(0,0,0,.65); color:#fff;
-      padding:10px 12px; border-radius:10px;
-      font: 14px/1.35 Arial, sans-serif;
-      min-width: 280px; max-width: 92vw; white-space: pre-wrap;
+      position: absolute;
+      z-index: 9999;
+      background: rgba(0,0,0,0.85);
+      color: #00ff41; 
+      padding: 15px;
+      border: 1px solid #00ff41;
+      font: 12px 'Courier New', monospace;
+      box-shadow: 0 0 15px rgba(0,255,65,0.2);
+      transition: all 0.3s ease;
     }
 
-    #alertBanner{
-      position:absolute; top:0; left:0; right:0;
-      padding:10px; text-align:center;
-      font-family:Arial,sans-serif; font-weight:bold;
-      background:rgba(255,0,0,0.85); color:white;
-      z-index:10000; display:none;
+    /* Estilo PC (Lateral) */
+    @media (min-width: 768px) {
+      #hud {
+        top: 10px;
+        left: 10px;
+        width: 280px;
+        border-radius: 8px;
+      }
     }
 
-    #dot{ display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; background:#ff4444; vertical-align:middle; }
+    /* Estilo Móvil (Inferior) */
+    @media (max-width: 767px) {
+      #hud {
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        border-radius: 15px 15px 0 0;
+        border-left: none;
+        border-right: none;
+        border-bottom: none;
+        padding: 10px;
+        box-sizing: border-box;
+      }
+      .hud-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      hr { margin: 5px 0 !important; }
+    }
 
-    .small{ font-size:12px; opacity:.95; }
-    .hint{ font-size:11px; opacity:.75; display:block; margin-top:6px; }
+    #terrainAlert {
+      display: none;
+      color: #ff4444;
+      font-weight: bold;
+      text-align: center;
+      border: 1px solid #ff4444;
+      padding: 4px;
+      margin-top: 5px;
+      animation: blink 0.6s infinite;
+      font-size: 10px;
+    }
+
+    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.2; } 100% { opacity: 1; } }
+
+    #dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; background:#ff4444; }
+    .label { color: #00ff41; text-transform: uppercase; font-size: 9px; opacity: 0.7; display: block; }
+    .stat { color: #fff; font-weight: bold; font-size: 13px; }
+    hr { border: 0; border-top: 1px solid rgba(0,255,65,0.3); margin: 8px 0; }
+    .unit { font-size: 9px; color: #00ff41; margin-left: 2px; }
+    .warning-text { color: #ff4444 !important; }
+    .info-block { margin-bottom: 4px; }
   </style>
 </head>
 
 <body>
-  <div id="alertBanner">🔴 ALERTA: TORMENTA / LLUVIA FUERTE CERCA</div>
-
   <div id="hud">
-    <span id="dot"></span><span id="linkStatus">Cargando…</span><br>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <span><span id="dot"></span> <span id="linkStatus" style="font-size: 10px;">OFFLINE</span></span>
+      <span id="last" style="font-size:9px; opacity:0.6">--:--:--</span>
+    </div>
+    
+    <hr>
+    
+    <div class="hud-grid">
+      <div class="info-block">
+        <span class="label">Radar Alt (AGL)</span>
+        <span id="agl" class="stat">--</span><span class="unit">FT</span>
+      </div>
+      
+      <div class="info-block">
+        <span class="label">V. Speed (VSI)</span>
+        <span id="vsi" class="stat">--</span><span class="unit">FPM</span>
+      </div>
 
-    Radar Perú (precip): <span class="small" id="radarPeru">⏳ Cargando radar…</span><br>
-    Clima 200 km: <span class="small" id="wx200">⏳ Analizando…</span><br>
+      <div class="info-block">
+        <span class="label">MSL Altitude</span>
+        <span id="altft" class="stat">--</span><span class="unit">FT</span>
+      </div>
 
-    Velocidad: <span id="spd">--</span> km/h ( <span id="kt">--</span> kt )<br>
-    Altura: <span id="altm">--</span> m ( <span id="altft">--</span> ft )<br>
+      <div class="info-block">
+        <span class="label">Ground Speed</span>
+        <span id="spd" class="stat">--</span><span class="unit">KM/H</span>
+      </div>
+    </div>
 
-    Radar 500 m: <span class="small" id="radar500">⏳ Radar iniciando…</span><br>
-    Última actualización: <span id="last">--</span>
-
-    <span class="hint">🟢 leve | 🟡 moderada | 🔴 tormenta/fuerte</span>
+    <div id="terrainAlert">⚠️ LOW TERRAIN CLEARANCE ⚠️</div>
+    
+    <hr>
+    
+    <div style="font-size: 9px; line-height: 1.4;">
+      <span class="label">METAR / ENV</span>
+      <span id="env" style="color: #fff;">CARGANDO ATMÓSFERA...</span><br>
+      <span class="label">Weather 200km</span>
+      <span id="wx200" style="color: #fff;">--</span>
+    </div>
   </div>
 
   <div id="cesiumContainer"></div>
-
-  <script>
-    // Mostrar errores JS en pantalla
-    const hud = document.getElementById("hud");
-    window.addEventListener("error", (e) => {
-      hud.textContent = "❌ ERROR JS:\n" + (e.message || e.error || e);
-    });
-    window.addEventListener("unhandledrejection", (e) => {
-      hud.textContent = "❌ PROMISE ERROR:\n" + (e.reason?.message || e.reason || e);
-    });
-  </script>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-    // ======= CONFIG =======
-    const RADAR_RADIUS_M = 500;
-    const RADAR_POLL_MS = 15000;
-    const LOST_AFTER_MS = 10000;
+    const WEATHER_POLL_MS = 60000;
+    Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMWEwZTAwZS0wYWVjLTQ1ZmUtOGY2OC05NmVjZmQ5OTNhZTEiLCJpZCI6Mzg2Nzc5LCJpYXQiOjE3NzAxNzUzMDB9.Myivn9P57mAFArlOhP_dXj-CmANbGiUnwmTXssotP_o";
 
-    // Semáforo 200 km
-    const WEATHER_RADIUS_M = 200000;
-    const WEATHER_POLL_MS  = 60000;
-    const LIGHT_MAX = 1.0;
-    const MODERATE_MAX = 5.0;
-
-    // Overlay precipitación Perú (RainViewer)
-    const RAIN_REFRESH_MS = 10 * 60 * 1000;
-
-    // ✅ TU TOKEN CESIUM
-    Cesium.Ion.defaultAccessToken =
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIyMWEwZTAwZS0wYWVjLTQ1ZmUtOGY2OC05NmVjZmQ5OTNhZTEiLCJpZCI6Mzg2Nzc5LCJpYXQiOjE3NzAxNzUzMDB9.Myivn9P57mAFArlOhP_dXj-CmANbGiUnwmTXssotP_o";
-
-    // 🔥 Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyCDHpTxxw0XObZFaG4G7VRVl8-ouszM5e8",
       authDomain: "tracker-an32b.firebaseapp.com",
       databaseURL: "https://tracker-an32b-default-rtdb.firebaseio.com",
       projectId: "tracker-an32b",
-      storageBucket: "tracker-an32b.firebasestorage.app",
-      messagingSenderId: "671744221089",
-      appId: "1:671744221089:web:60af7fbf5e992210ec75e0"
     };
 
-    // ======= HUD refs =======
-    const dot = document.getElementById("dot");
-    const linkStatus = document.getElementById("linkStatus");
-    const banner = document.getElementById("alertBanner");
-
-    const radarPeruEl = document.getElementById("radarPeru");
-    const wx200El = document.getElementById("wx200");
-    const spdEl = document.getElementById("spd");
-    const ktEl  = document.getElementById("kt");
-    const altmEl = document.getElementById("altm");
-    const altftEl = document.getElementById("altft");
-    const radar500El = document.getElementById("radar500");
-    const lastEl = document.getElementById("last");
-
-    function setLink(ok, text) {
-      dot.style.background = ok ? "#33cc66" : "#ff4444";
-      linkStatus.textContent = text || (ok ? "Recibiendo datos" : "Sin datos");
-    }
-
-    // ======= Viewer =======
-    setLink(false, "Inicializando Cesium…");
+    const hud = {
+        link: document.getElementById("linkStatus"),
+        terrainAlert: document.getElementById("terrainAlert"),
+        wx: document.getElementById("wx200"),
+        spd: document.getElementById("spd"),
+        altft: document.getElementById("altft"),
+        agl: document.getElementById("agl"),
+        vsi: document.getElementById("vsi"),
+        env: document.getElementById("env"),
+        last: document.getElementById("last")
+    };
 
     const viewer = new Cesium.Viewer("cesiumContainer", {
       terrain: Cesium.Terrain.fromWorldTerrain(),
-      timeline: false,
-      animation: false
+      timeline: false, animation: false, shadows: true,
+      navigationHelpButton: false, sceneModePicker: false, fullscreenButton: false
     });
 
-    // ======= ✅ OVERLAY PRECIPITACIÓN PERÚ COMPLETO (RainViewer) =======
-    let rainLayer = null;
-
-    async function addRainViewerOverlay() {
-      radarPeruEl.textContent = "⏳ Cargando radar…";
-      try {
-        const metaUrl = "https://api.rainviewer.com/public/weather-maps.json";
-        const res = await fetch(metaUrl, { cache: "no-store" });
-        if (!res.ok) throw new Error("meta radar HTTP " + res.status);
-
-        const meta = await res.json();
-        const frames = meta?.radar?.past;
-        if (!frames || !frames.length) throw new Error("sin frames");
-
-        const latest = frames[frames.length - 1];
-        const path = latest.path;
-
-        if (rainLayer) {
-          viewer.imageryLayers.remove(rainLayer, true);
-          rainLayer = null;
-        }
-
-        const provider = new Cesium.UrlTemplateImageryProvider({
-          url: `https://tilecache.rainviewer.com${path}/256/{z}/{x}/{y}/2/1_1.png`,
-          tileWidth: 256,
-          tileHeight: 256,
-          maximumLevel: 10
-        });
-
-        rainLayer = viewer.imageryLayers.addImageryProvider(provider);
-        rainLayer.alpha = 0.65;
-        rainLayer.show = true;
-
-        const t = new Date(latest.time * 1000).toLocaleString();
-        radarPeruEl.textContent = `✅ Radar activo (${t})`;
-      } catch (e) {
-        radarPeruEl.textContent = "⚠️ Radar no disponible";
-        console.log("RainViewer error:", e);
-      }
-    }
-
-    addRainViewerOverlay();
-    setInterval(addRainViewerOverlay, RAIN_REFRESH_MS);
-
-    // Punto (avión)
     const plane = viewer.entities.add({
-      position: Cesium.Cartesian3.fromDegrees(-77.04, -12.05, 1000),
-      point: { pixelSize: 16, color: Cesium.Color.RED }
+      label: { text: "AN-32B", font: "10px monospace", pixelOffset: new Cesium.Cartesian2(0, -15) },
+      point: { pixelSize: 8, color: Cesium.Color.RED }
     });
     viewer.trackedEntity = plane;
 
-    // Anillo 500m
-    const radarRing = viewer.entities.add({
-      position: plane.position,
-      ellipse: {
-        semiMajorAxis: RADAR_RADIUS_M,
-        semiMinorAxis: RADAR_RADIUS_M,
-        height: 0,
-        material: Cesium.Color.LIME.withAlpha(0.18),
-        outline: true,
-        outlineColor: Cesium.Color.LIME
+    let trailPoints = [];
+    viewer.entities.add({
+      polyline: {
+        positions: new Cesium.CallbackProperty(() => trailPoints, false),
+        width: 3, material: new Cesium.PolylineGlowMaterialProperty({ color: Cesium.Color.RED, glowPower: 0.1 })
       }
     });
 
-    // Anillo 200 km
     const weatherRing = viewer.entities.add({
-      position: plane.position,
-      ellipse: {
-        semiMajorAxis: WEATHER_RADIUS_M,
-        semiMinorAxis: WEATHER_RADIUS_M,
-        height: 0,
-        material: Cesium.Color.LIME.withAlpha(0.10),
-        outline: true,
-        outlineColor: Cesium.Color.LIME
-      }
+      ellipse: { semiMajorAxis: 200000, semiMinorAxis: 200000, material: Cesium.Color.LIME.withAlpha(0.1), outline: true, outlineColor: Cesium.Color.LIME }
     });
 
-    // ======= Firebase =======
-    setLink(false, "Conectando a Firebase…");
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // ======= Utilidades =======
     let lastFix = null;
-    let lastUpdateMs = 0;
-
-    function haversineMeters(lat1, lon1, lat2, lon2) {
-      const R = 6371000;
-      const toRad = d => d * Math.PI / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a =
-        Math.sin(dLat/2)**2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon/2)**2;
-      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
-
-    const mpsToKmh = mps => mps * 3.6;
-    const mpsToKt  = mps => mps * 1.943844;
-    const mToFt    = m => m * 3.28084;
-
-    function offsetLatLon(lat, lon, northM, eastM) {
-      const dLat = northM / 111320;
-      const dLon = eastM / (111320 * Math.cos(lat * Math.PI / 180));
-      return { lat: lat + dLat, lon: lon + dLon };
-    }
-
-    function isThunderCode(code) {
-      return code === 95 || code === 96 || code === 97 || code === 98 || code === 99;
-    }
-
-    // ======= Fetch helper (muestra error real) =======
-    async function fetchJsonOrThrow(url) {
-      const res = await fetch(url, { cache: "no-store" });
-      const text = await res.text();
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${text.slice(0,120)}`);
-      }
-      try {
-        return JSON.parse(text);
-      } catch {
-        throw new Error("Respuesta no-JSON: " + text.slice(0,120));
-      }
-    }
-
-    // ======= Radar 500m (Open-Meteo) con fallback =======
-    let lastRadarAt = 0;
-    let lastRadar = { danger: false, msg: "⏳ Radar iniciando…", thunderHits: 0, maxRain: 0 };
-
-    function grid3x3(lat, lon, r = 500) {
-      const k = r / Math.sqrt(2);
-      const offsets = [
-        [ 0, 0],
-        [ r, 0], [-r, 0], [0, r], [0, -r],
-        [ k, k], [ k,-k], [-k, k], [-k,-k]
-      ];
-      return offsets.map(([n,e]) => offsetLatLon(lat, lon, n, e));
-    }
-
-    let audioCtx;
-    function beep() {
-      try {
-        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        o.type = "sine";
-        o.frequency.value = 880;
-        g.gain.value = 0.05;
-        o.connect(g); g.connect(audioCtx.destination);
-        o.start();
-        setTimeout(() => o.stop(), 180);
-      } catch {}
-    }
-
-    function parseOpenMeteoCurrent(j) {
-      const c = j?.current;
-      if (!c) return null;
-
-      const codes = Array.isArray(c.weather_code) ? c.weather_code : [c.weather_code];
-      const rainA = Array.isArray(c.rain) ? c.rain : [c.rain ?? 0];
-      const precA = Array.isArray(c.precipitation) ? c.precipitation : [c.precipitation ?? 0];
-      return { codes, rainA, precA };
-    }
-
-    async function radarMeteo500m(lat, lon) {
-      const now = Date.now();
-      if (now - lastRadarAt < RADAR_POLL_MS) return lastRadar;
-      lastRadarAt = now;
-
-      // 1) intento con 9 puntos
-      try {
-        const pts = grid3x3(lat, lon, RADAR_RADIUS_M);
-        const lats = pts.map(p => p.lat.toFixed(6)).join(",");
-        const lons = pts.map(p => p.lon.toFixed(6)).join(",");
-
-        const url =
-          `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
-          `&current=weather_code,precipitation,rain&timezone=auto`;
-
-        const j = await fetchJsonOrThrow(url);
-        const parsed = parseOpenMeteoCurrent(j);
-        if (!parsed) throw new Error("sin current (multi)");
-
-        const { codes, rainA, precA } = parsed;
-        let thunderHits = 0, maxRain = 0, danger = false;
-
-        for (let i = 0; i < codes.length; i++) {
-          const code = Number(codes[i]);
-          const rain = Math.max(Number(rainA[i] ?? 0), Number(precA[i] ?? 0));
-          maxRain = Math.max(maxRain, rain);
-          if (isThunderCode(code)) thunderHits++;
-          if (rain >= 3.0) danger = true;
-        }
-        if (thunderHits > 0) danger = true;
-
-        const msg = danger
-          ? `🔴 TORMENTA/FUERTE ≤ 500 m | th:${thunderHits} | lluvia máx:${maxRain.toFixed(1)}`
-          : `🟢 OK ≤ 500 m | lluvia máx:${maxRain.toFixed(1)}`;
-
-        if (danger && !lastRadar.danger) beep();
-        lastRadar = { danger, msg, thunderHits, maxRain };
-        return lastRadar;
-
-      } catch (e1) {
-        // 2) fallback: solo 1 punto (centro)
-        try {
-          const url =
-            `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(6)}&longitude=${lon.toFixed(6)}` +
-            `&current=weather_code,precipitation,rain&timezone=auto`;
-
-          const j = await fetchJsonOrThrow(url);
-          const parsed = parseOpenMeteoCurrent(j);
-          if (!parsed) throw new Error("sin current (single)");
-
-          const code = Number(parsed.codes[0] ?? 0);
-          const rain = Math.max(Number(parsed.rainA[0] ?? 0), Number(parsed.precA[0] ?? 0));
-          const thunderHits = isThunderCode(code) ? 1 : 0;
-          const danger = thunderHits > 0 || rain >= 3.0;
-
-          const msg = danger
-            ? `🔴 (fallback) Fuerte | lluvia:${rain.toFixed(1)}`
-            : `🟢 (fallback) OK | lluvia:${rain.toFixed(1)}`;
-
-          lastRadar = { danger, msg, thunderHits, maxRain: rain };
-          return lastRadar;
-
-        } catch (e2) {
-          lastRadar.msg = `⚠️ Open-Meteo 500m falló: ${String(e2.message || e2).slice(0,80)}`;
-          return lastRadar;
-        }
-      }
-    }
-
-    // ======= Clima 200 km (semáforo) con fallback =======
     let lastWxAt = 0;
-    let lastWx = { level: "init", msg: "⏳ Analizando…", maxPrecip: 0, thunderHits: 0 };
 
-    function ringPoints(lat, lon, radiusKm) {
-      if (radiusKm === 0) return [{ lat, lon }];
-      const r = radiusKm * 1000;
-      const k = r / Math.sqrt(2);
-      const offsets = [
-        [ r, 0], [-r, 0], [0, r], [0, -r],
-        [ k, k], [ k,-k], [-k, k], [-k,-k]
-      ];
-      return offsets.map(([n,e]) => offsetLatLon(lat, lon, n, e));
-    }
-
-    function buildWxSample(lat, lon) {
-      const rings = [0, 100, 200];
-      const pts = [];
-      for (const km of rings) pts.push(...ringPoints(lat, lon, km));
-      const seen = new Set();
-      return pts.filter(p => {
-        const key = p.lat.toFixed(4) + "," + p.lon.toFixed(4);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
-
-    function wxLevel(maxPrecip, thunderHits) {
-      if (thunderHits > 0 || maxPrecip >= MODERATE_MAX) return "red";
-      if (maxPrecip > LIGHT_MAX) return "yellow";
-      return "green";
-    }
-
-    function setWxVisual(level) {
-      if (level === "red") {
-        weatherRing.ellipse.material = Cesium.Color.RED.withAlpha(0.12);
-        weatherRing.ellipse.outlineColor = Cesium.Color.RED;
-      } else if (level === "yellow") {
-        weatherRing.ellipse.material = Cesium.Color.YELLOW.withAlpha(0.10);
-        weatherRing.ellipse.outlineColor = Cesium.Color.YELLOW;
-      } else {
-        weatherRing.ellipse.material = Cesium.Color.LIME.withAlpha(0.10);
-        weatherRing.ellipse.outlineColor = Cesium.Color.LIME;
-      }
-    }
-
-    async function weather200km(lat, lon) {
-      const now = Date.now();
-      if (now - lastWxAt < WEATHER_POLL_MS) return lastWx;
-      lastWxAt = now;
-
-      // 1) intento multi-puntos
-      try {
-        const pts = buildWxSample(lat, lon);
-        const lats = pts.map(p => p.lat.toFixed(5)).join(",");
-        const lons = pts.map(p => p.lon.toFixed(5)).join(",");
-
-        const url =
-          `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
-          `&current=weather_code,precipitation,rain&timezone=auto`;
-
-        const j = await fetchJsonOrThrow(url);
-        const parsed = parseOpenMeteoCurrent(j);
-        if (!parsed) throw new Error("sin current (multi)");
-
-        let thunderHits = 0, maxPrecip = 0;
-        for (let i = 0; i < parsed.codes.length; i++) {
-          const code = Number(parsed.codes[i]);
-          const p = Math.max(Number(parsed.precA[i] ?? 0), Number(parsed.rainA[i] ?? 0));
-          if (isFinite(p)) maxPrecip = Math.max(maxPrecip, p);
-          if (isThunderCode(code)) thunderHits++;
-        }
-
-        const level = wxLevel(maxPrecip, thunderHits);
-        const emoji = level === "green" ? "🟢" : level === "yellow" ? "🟡" : "🔴";
-        const label = level === "green" ? "VERDE" : level === "yellow" ? "AMARILLO" : "ROJO";
-        const msg = `${emoji} ${label} | precip máx:${maxPrecip.toFixed(1)} | tormenta:${thunderHits}`;
-
-        lastWx = { level, msg, maxPrecip, thunderHits };
-        return lastWx;
-
-      } catch (e1) {
-        // 2) fallback: solo 1 punto
+    async function fetchAtmosphere(lat, lon) {
+        if (Date.now() - lastWxAt < WEATHER_POLL_MS) return;
+        lastWxAt = Date.now();
         try {
-          const url =
-            `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(6)}&longitude=${lon.toFixed(6)}` +
-            `&current=weather_code,precipitation,rain&timezone=auto`;
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,precipitation,wind_speed_10m,wind_direction_10m,surface_pressure`;
+            const res = await fetch(url);
+            const data = await res.json();
+            const c = data.current;
 
-          const j = await fetchJsonOrThrow(url);
-          const parsed = parseOpenMeteoCurrent(j);
-          if (!parsed) throw new Error("sin current (single)");
-
-          const code = Number(parsed.codes[0] ?? 0);
-          const p = Math.max(Number(parsed.precA[0] ?? 0), Number(parsed.rainA[0] ?? 0));
-          const thunderHits = isThunderCode(code) ? 1 : 0;
-
-          const level = wxLevel(p, thunderHits);
-          const emoji = level === "green" ? "🟢" : level === "yellow" ? "🟡" : "🔴";
-          const label = level === "green" ? "VERDE" : level === "yellow" ? "AMARILLO" : "ROJO";
-          const msg = `${emoji} ${label} (fallback) | precip:${p.toFixed(1)} | tormenta:${thunderHits}`;
-
-          lastWx = { level, msg, maxPrecip: p, thunderHits };
-          return lastWx;
-
-        } catch (e2) {
-          lastWx.msg = `⚠️ Open-Meteo 200km falló: ${String(e2.message || e2).slice(0,80)}`;
-          return lastWx;
-        }
-      }
+            let level = (c.weather_code >= 95 || c.precipitation >= 5) ? "red" : (c.precipitation > 1 ? "yellow" : "green");
+            hud.wx.textContent = `${c.precipitation.toFixed(1)}mm (${level.toUpperCase()})`;
+            hud.env.textContent = `${c.wind_speed_10m}km/h @ ${c.wind_direction_10m}° | ${c.surface_pressure}hPa`;
+            
+            const color = level === "red" ? Cesium.Color.RED : (level === "yellow" ? Cesium.Color.YELLOW : Cesium.Color.LIME);
+            weatherRing.ellipse.material = color.withAlpha(0.1);
+            weatherRing.ellipse.outlineColor = color;
+        } catch (e) { }
     }
 
-    // ======= Sin datos =======
-    setInterval(() => {
-      const now = Date.now();
-      if (!lastUpdateMs || (now - lastUpdateMs) > LOST_AFTER_MS) {
-        setLink(false, "Sin datos (celular pausado)");
-      }
-    }, 1000);
+    async function calculateAGL(lat, lon, altMSL) {
+        const carto = Cesium.Cartographic.fromDegrees(lon, lat);
+        try {
+            const [sampled] = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, [carto]);
+            if (sampled) {
+                const groundHeight = sampled.height;
+                const aglFeet = (altMSL - groundHeight) * 3.28084;
+                hud.agl.textContent = Math.max(0, aglFeet).toFixed(0);
+                
+                if (aglFeet < 1000) {
+                    hud.terrainAlert.style.display = "block";
+                    hud.agl.classList.add("warning-text");
+                } else {
+                    hud.terrainAlert.style.display = "none";
+                    hud.agl.classList.remove("warning-text");
+                }
+            }
+        } catch (e) { }
+    }
 
-    // ======= LISTENER PRINCIPAL =======
-    setLink(false, "Esperando datos…");
-
-    onValue(ref(db, "an32/position"), async (snap) => {
+    onValue(ref(db, "an32/position"), (snap) => {
       const d = snap.val();
-      if (!d || typeof d.lat !== "number" || typeof d.lon !== "number") return;
+      if (!d) return;
 
-      const lat = d.lat;
-      const lon = d.lon;
-      const altM = (typeof d.alt === "number" ? d.alt : 0);
-      const altFt = mToFt(altM);
-      const tMs = (typeof d.time === "number" ? d.time : Date.now());
-      const tStr = new Date(tMs).toLocaleString();
+      const pos = Cesium.Cartesian3.fromDegrees(d.lon, d.lat, d.alt);
+      plane.position = pos;
+      weatherRing.position = pos;
+      trailPoints.push(pos);
+      if(trailPoints.length > 500) trailPoints.shift();
 
-      const displayAlt = Math.max((altM ?? 0) + 5, 10);
-      plane.position = Cesium.Cartesian3.fromDegrees(lon, lat, displayAlt);
-
-      radarRing.position = plane.position;
-      weatherRing.position = plane.position;
-
-      // Velocidad (sale -- al inicio, es normal hasta que haya 2 puntos)
-      let speedKmh = null, speedKt = null;
-      if (lastFix && tMs > lastFix.time) {
-        const distM = haversineMeters(lastFix.lat, lastFix.lon, lat, lon);
-        const dtSec = (tMs - lastFix.time) / 1000;
-        const mps = distM / dtSec;
-        if (isFinite(mps) && mps >= 0 && mps < 200) {
-          speedKmh = mpsToKmh(mps);
-          speedKt = mpsToKt(mps);
-        }
+      if (lastFix) {
+          const dt = (Date.now() - lastFix.time) / 1000;
+          const vsi = ((d.alt - lastFix.alt) * 3.28084) / (dt / 60);
+          hud.vsi.textContent = (vsi > 0 ? "+" : "") + vsi.toFixed(0);
+          const dist = Cesium.Cartesian3.distance(Cesium.Cartesian3.fromDegrees(lastFix.lon, lastFix.lat), Cesium.Cartesian3.fromDegrees(d.lon, d.lat));
+          hud.spd.textContent = ((dist / dt) * 3.6).toFixed(1);
       }
 
-      // Radar 500m + Semáforo 200km
-      const radar500 = await radarMeteo500m(lat, lon);
-      const wx = await weather200km(lat, lon);
-
-      // Visuals
-      if (radar500.danger) {
-        radarRing.ellipse.material = Cesium.Color.RED.withAlpha(0.22);
-        radarRing.ellipse.outlineColor = Cesium.Color.RED;
-      } else {
-        radarRing.ellipse.material = Cesium.Color.LIME.withAlpha(0.18);
-        radarRing.ellipse.outlineColor = Cesium.Color.LIME;
-      }
-
-      if (wx.level === "green" || wx.level === "yellow" || wx.level === "red") {
-        setWxVisual(wx.level);
-      }
-
-      // Banner si rojo por 500m o 200km
-      banner.style.display = (radar500.danger || wx.level === "red") ? "block" : "none";
-
-      // UI estado
-      lastFix = { lat, lon, time: tMs };
-      lastUpdateMs = Date.now();
-      setLink(true, "Recibiendo datos");
-
-      // HUD updates
-      spdEl.textContent = speedKmh ? speedKmh.toFixed(1) : "--";
-      ktEl.textContent  = speedKt ? speedKt.toFixed(1) : "--";
-      altmEl.textContent = altM ? altM.toFixed(0) : "--";
-      altftEl.textContent = altM ? altFt.toFixed(0) : "--";
-      radar500El.textContent = radar500.msg;
-      wx200El.textContent = wx.msg;
-      lastEl.textContent = tStr;
+      hud.altft.textContent = (d.alt * 3.28084).toFixed(0);
+      hud.last.textContent = new Date().toLocaleTimeString();
+      
+      calculateAGL(d.lat, d.lon, d.alt);
+      fetchAtmosphere(d.lat, d.lon);
+      
+      lastFix = { lat: d.lat, lon: d.lon, alt: d.alt, time: Date.now() };
+      document.getElementById("dot").style.background = "#00ff41";
+      hud.link.textContent = "ONLINE";
     });
   </script>
 </body>
